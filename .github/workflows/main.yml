@@ -1,0 +1,48 @@
+name: Ellis TWRP Builder
+
+on:
+  workflow_dispatch: # Allows you to trigger the build manually
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    steps:
+    - name: Checkout Builder
+      uses: actions/checkout@v4
+
+    - name: Cleanup Environment
+      run: |
+        sudo rm -rf /usr/share/dotnet /etc/mysql /usr/local/lib/android
+        sudo apt update && sudo apt install -y aria2 git python3
+
+    - name: Install Repo Tool
+      run: |
+        mkdir ~/bin
+        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+        chmod a+x ~/bin/repo
+        sudo ln -sf ~/bin/repo /usr/bin/repo
+
+    - name: Initialize TWRP Source
+      run: |
+        mkdir workspace && cd workspace
+        repo init --depth=1 -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1
+        repo sync -c -j$(nproc --all) --force-sync --no-tags --no-clone-bundle
+
+    - name: Clone Device Tree
+      run: |
+        cd workspace
+        git clone https://github.com/${{ github.repository }} device/motorola/ellis
+
+    - name: Build Recovery (Boot Image)
+      run: |
+        cd workspace
+        export ALLOW_MISSING_DEPENDENCIES=true
+        . build/envsetup.sh
+        lunch twrp_ellis-eng
+        mka bootimage
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: TWRP-Ellis-Build
+        path: workspace/out/target/product/ellis/boot.img
